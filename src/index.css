@@ -1,0 +1,159 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: #1a1b26;
+  color: #c0caf5;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1b26;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3b4261;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #565f89;
+}
+
+/* CodeMirror Theme Override */
+.cm-editor {
+  height: 100% !important;
+  font-size: 14px !important;
+}
+
+.cm-editor .cm-gutters {
+  background: #1a1b26 !important;
+  border-right: 1px solid #3b4261 !important;
+}
+
+.cm-editor .cm-content {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace !important;
+}
+
+/* Markdown Preview */
+.markdown-preview {
+  line-height: 1.8;
+  color: #c0caf5;
+}
+
+.markdown-preview h1 {
+  font-size: 2em;
+  font-weight: bold;
+  margin: 0.67em 0;
+  color: #7aa2f7;
+  border-bottom: 1px solid #3b4261;
+  padding-bottom: 0.3em;
+}
+
+.markdown-preview h2 {
+  font-size: 1.5em;
+  font-weight: bold;
+  margin: 0.83em 0;
+  color: #bb9af7;
+  border-bottom: 1px solid #3b4261;
+  padding-bottom: 0.3em;
+}
+
+.markdown-preview h3 {
+  font-size: 1.17em;
+  font-weight: bold;
+  margin: 1em 0;
+  color: #7dcfff;
+}
+
+.markdown-preview p {
+  margin: 1em 0;
+}
+
+.markdown-preview a {
+  color: #7aa2f7;
+  text-decoration: underline;
+}
+
+.markdown-preview code {
+  background: #3b4261;
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9em;
+}
+
+.markdown-preview pre {
+  background: #24283b;
+  padding: 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.markdown-preview pre code {
+  background: none;
+  padding: 0;
+}
+
+.markdown-preview blockquote {
+  border-left: 4px solid #7aa2f7;
+  padding-left: 1em;
+  margin: 1em 0;
+  color: #a9b1d6;
+}
+
+.markdown-preview ul, .markdown-preview ol {
+  padding-left: 2em;
+  margin: 1em 0;
+}
+
+.markdown-preview li {
+  margin: 0.5em 0;
+}
+
+.markdown-preview table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+}
+
+.markdown-preview th, .markdown-preview td {
+  border: 1px solid #3b4261;
+  padding: 0.5em 1em;
+  text-align: left;
+}
+
+.markdown-preview th {
+  background: #24283b;
+  font-weight: bold;
+}
+
+.markdown-preview img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.markdown-preview hr {
+  border: none;
+  border-top: 1px solid #3b4261;
+  margin: 2em 0;
+}

@@ -1,4 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { marked } from 'marked';
+
+marked.setOptions({ breaks: true, gfm: true });
 
 const STORAGE_KEY = 'ai-writing-studio-docs';
 const THEME_KEY = 'ai-writing-theme';
@@ -54,7 +57,6 @@ const WRITING_TIPS = [
   '写作是修改的过程，好文章是改出来的。'
 ];
 
-// Hooks
 function useDocuments() {
   const [documents, setDocuments] = useState([]);
   const [currentDocId, setCurrentDocId] = useState(null);
@@ -97,7 +99,7 @@ function useDocuments() {
   }, []);
 
   const updateDocument = useCallback((id, updates) => {
-    setDocuments(prev => prev.map(doc => 
+    setDocuments(prev => prev.map(doc =>
       doc.id === id ? { ...doc, ...updates, updatedAt: Date.now() } : doc
     ));
   }, []);
@@ -153,12 +155,11 @@ function useAI() {
   };
 }
 
-// Components
 function Header({ document, onUpdateTitle, onMenuClick, onSettingsClick }) {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(document?.title || '');
   useEffect(() => setTitle(document?.title || ''), [document?.title]);
-  
+
   const handleSave = () => {
     if (title.trim() && document) onUpdateTitle(document.id, title.trim());
     setIsEditing(false);
@@ -166,12 +167,12 @@ function Header({ document, onUpdateTitle, onMenuClick, onSettingsClick }) {
 
   return (
     <header className="h-12 border-b flex items-center px-4" style={{ borderColor: 'var(--md-outline-variant)', background: 'var(--md-surface)' }}>
-      <button onClick={onMenuClick} className="p-2 rounded-full mr-2 hover:bg-opacity-10" style={{ color: 'var(--md-on-surface)' }}>
+      <button onClick={onMenuClick} className="p-2 rounded-full mr-2" style={{ color: 'var(--md-on-surface)' }}>
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
         </svg>
       </button>
-      
+
       <div className="flex-1 flex justify-center">
         {isEditing ? (
           <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={handleSave}
@@ -183,7 +184,7 @@ function Header({ document, onUpdateTitle, onMenuClick, onSettingsClick }) {
           </button>
         )}
       </div>
-      
+
       <button onClick={onSettingsClick} className="p-2 rounded-full ml-2" style={{ color: 'var(--md-on-surface)' }}>
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -215,7 +216,7 @@ function Sidebar({ documents, currentDocId, onSelect, onCreate, onDelete, isOpen
           </div>
           <input type="text" placeholder="搜索文档..." value={search} onChange={(e) => setSearch(e.target.value)} className="md-input" />
         </div>
-        
+
         <div className="overflow-auto" style={{ height: 'calc(100% - 180px)' }}>
           {filtered.map(doc => (
             <div key={doc.id} onClick={() => { onSelect(doc.id); onClose(); }}
@@ -239,7 +240,7 @@ function Sidebar({ documents, currentDocId, onSelect, onCreate, onDelete, isOpen
             </div>
           ))}
         </div>
-        
+
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t" style={{ borderColor: 'var(--md-outline-variant)', background: 'var(--md-surface)' }}>
           <button onClick={() => { onCreate(); onClose(); }} className="w-full py-3 rounded-xl font-medium ripple" style={{ background: 'var(--md-primary)', color: 'var(--md-on-primary)' }}>
             + 新建文档
@@ -278,11 +279,8 @@ function TemplateModal({ isOpen, onClose, onSelect }) {
 
 function ExportModal({ isOpen, onClose, content, title }) {
   if (!isOpen) return null;
-  
-  const handleExport = async (type) => {
-    const { marked } = await import('marked');
-    marked.setOptions({ breaks: true, gfm: true });
-    
+
+  const handleExport = (type) => {
     if (type === 'markdown') {
       const blob = new Blob([content], { type: 'text/markdown' });
       downloadBlob(blob, `${title}.md`);
@@ -370,7 +368,7 @@ function SettingsPanel({ isOpen, onClose, theme, onThemeChange }) {
             </div>
           </div>
           <div className="pt-4 border-t" style={{ borderColor: 'var(--md-outline-variant)' }}>
-            <div className="text-sm" style={{ color: 'var(--md-outline)' }}>AI Writing Studio v1.0.0</div>
+            <div className="text-sm" style={{ color: 'var(--md-outline)' }}>AI Writing Studio v1.1.0</div>
             <div className="text-sm mt-1" style={{ color: 'var(--md-outline)' }}>Powered by Puter.js</div>
           </div>
         </div>
@@ -412,13 +410,13 @@ function Editor({ value, onChange, onTextSelect }) {
 
 function Preview({ content }) {
   const html = useMemo(() => {
-    try { return marked.parse(content || ''); } 
+    try { return marked.parse(content || ''); }
     catch { return '<p>渲染错误</p>'; }
   }, [content]);
   return <div className="h-full overflow-auto p-6"><div className="markdown-preview" dangerouslySetInnerHTML={{ __html: html }} /></div>;
 }
 
-function AIPanel({ selectedText, onApplyResult, isOpen, onClose }) {
+function AIPanel({ selectedText, onReplaceResult, isOpen, onClose }) {
   const { loading, error, result, setResult, polish, expand, shorten, translate, summarize, continueWriting } = useAI();
   const [translateLang, setTranslateLang] = useState('英文');
 
@@ -458,7 +456,7 @@ function AIPanel({ selectedText, onApplyResult, isOpen, onClose }) {
                 <div className="text-sm max-h-24 overflow-auto" style={{ color: 'var(--md-on-surface)' }}>{selectedText}</div>
               </div>
             )}
-            
+
             <div className="space-y-2">
               {AI_MODES.map(mode => (
                 <button key={mode.id} onClick={() => handleAIAction(mode.id)} disabled={loading || !selectedText.trim()}
@@ -471,14 +469,14 @@ function AIPanel({ selectedText, onApplyResult, isOpen, onClose }) {
                 </button>
               ))}
             </div>
-            
+
             <div className="mt-4">
               <label className="block text-sm mb-2" style={{ color: 'var(--md-outline)' }}>翻译语言</label>
               <select value={translateLang} onChange={(e) => setTranslateLang(e.target.value)} className="md-input">
                 {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
               </select>
             </div>
-            
+
             {loading && (
               <div className="mt-4 p-4 rounded-xl" style={{ background: 'var(--md-primary-container)' }}>
                 <div className="flex items-center gap-2" style={{ color: 'var(--md-on-primary-container)' }}>
@@ -488,11 +486,11 @@ function AIPanel({ selectedText, onApplyResult, isOpen, onClose }) {
                 {result && <div className="mt-3 text-sm whitespace-pre-wrap max-h-48 overflow-auto" style={{ color: 'var(--md-on-primary-container)' }}>{result}</div>}
               </div>
             )}
-            
+
             {error && (
               <div className="mt-4 p-4 rounded-xl" style={{ background: 'var(--md-error)', color: 'var(--md-on-error)' }}>{error}</div>
             )}
-            
+
             {result && !loading && (
               <div className="mt-4 space-y-3">
                 <div className="p-4 rounded-xl" style={{ background: 'var(--md-surface-2)' }}>
@@ -500,8 +498,8 @@ function AIPanel({ selectedText, onApplyResult, isOpen, onClose }) {
                   <div className="text-sm whitespace-pre-wrap" style={{ color: 'var(--md-on-surface)' }}>{result}</div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => onApplyResult(result)} className="flex-1 py-3 rounded-xl font-medium ripple" style={{ background: 'var(--md-primary)', color: 'var(--md-on-primary)' }}>
-                    应用到编辑器
+                  <button onClick={() => onReplaceResult(result)} className="flex-1 py-3 rounded-xl font-medium ripple" style={{ background: 'var(--md-primary)', color: 'var(--md-on-primary)' }}>
+                    替换选中文本
                   </button>
                   <button onClick={() => setResult('')} className="px-4 py-3 rounded-xl" style={{ background: 'var(--md-surface-2)', color: 'var(--md-on-surface)' }}>
                     清除
@@ -509,7 +507,7 @@ function AIPanel({ selectedText, onApplyResult, isOpen, onClose }) {
                 </div>
               </div>
             )}
-            
+
             {!selectedText && !loading && (
               <div className="text-center py-8" style={{ color: 'var(--md-outline)' }}>
                 选中文本后点击 AI 按钮
@@ -525,6 +523,7 @@ function AIPanel({ selectedText, onApplyResult, isOpen, onClose }) {
 function BottomNav({ activeTab, onTabChange }) {
   const tabs = [
     { id: 'editor', icon: '✏️', label: '编辑' },
+    { id: 'preview', icon: '👁️', label: '预览' },
     { id: 'ai', icon: '🤖', label: 'AI' },
     { id: 'export', icon: '📤', label: '导出' },
     { id: 'settings', icon: '⚙️', label: '设置' }
@@ -589,7 +588,6 @@ function App() {
   const [showAIPanel, setShowAIPanel] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem(THEME_KEY) || 'light');
-  const [saveStatus, setSaveStatus] = useState('已保存');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -601,14 +599,19 @@ function App() {
       const titleMatch = content.match(/^#\s+(.+)/m);
       const newTitle = titleMatch ? titleMatch[1].trim() : '无标题文档';
       updateDocument(currentDoc.id, { content, title: newTitle });
-      setSaveStatus('保存中...');
-      setTimeout(() => setSaveStatus('已保存'), 500);
     }
   }, [currentDoc, updateDocument]);
 
-  const handleApplyResult = useCallback((result) => {
-    if (currentDoc) updateDocument(currentDoc.id, { content: currentDoc.content + '\n\n' + result });
-  }, [currentDoc, updateDocument]);
+  const handleReplaceResult = useCallback((result) => {
+    if (!currentDoc) return;
+    const cm = document.querySelector('.CodeMirror')?.CodeMirror;
+    if (cm && cm.somethingSelected()) {
+      cm.replaceSelection(result);
+      handleContentChange(cm.getValue());
+    } else {
+      updateDocument(currentDoc.id, { content: currentDoc.content + '\n\n' + result });
+    }
+  }, [currentDoc, updateDocument, handleContentChange]);
 
   const handleTabChange = (tab) => {
     if (tab === 'ai') setShowAIPanel(true);
@@ -617,36 +620,43 @@ function App() {
     else setActiveTab(tab);
   };
 
+  const wordCount = currentDoc?.content ? currentDoc.content.replace(/\s/g, '').length : 0;
+  const lineCount = currentDoc?.content ? currentDoc.content.split('\n').length : 0;
+
   return (
     <div className="h-screen flex flex-col" style={{ background: 'var(--md-surface)' }}>
-      <Header 
-        document={currentDoc} 
+      <Header
+        document={currentDoc}
         onUpdateTitle={(id, title) => updateDocument(id, { title })}
         onMenuClick={() => setShowSidebar(true)}
         onSettingsClick={() => setShowSettings(true)}
       />
-      
+
       <TipBanner />
-      
+
       <div className="flex-1 overflow-hidden" style={{ paddingBottom: '64px' }}>
-        <div className="h-full flex flex-col">
-          <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: 'var(--md-outline-variant)', background: 'var(--md-surface-2)' }}>
-            <span className="text-sm" style={{ color: 'var(--md-outline)' }}>编辑器</span>
-            <span className="text-sm" style={{ color: 'var(--md-outline)' }}>|</span>
-            <span className="text-sm" style={{ color: 'var(--md-outline)' }}>{saveStatus}</span>
+        {activeTab === 'editor' ? (
+          <div className="h-full flex flex-col">
+            <div className="flex items-center gap-2 px-3 py-2 border-b text-xs" style={{ borderColor: 'var(--md-outline-variant)', background: 'var(--md-surface-2)' }}>
+              <span style={{ color: 'var(--md-outline)' }}>{wordCount} 字</span>
+              <span style={{ color: 'var(--md-outline)' }}>|</span>
+              <span style={{ color: 'var(--md-outline)' }}>{lineCount} 行</span>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <Editor value={currentDoc?.content || ''} onChange={handleContentChange} onTextSelect={setSelectedText} />
+            </div>
           </div>
-          <div className="flex-1 overflow-hidden">
-            <Editor value={currentDoc?.content || ''} onChange={handleContentChange} onTextSelect={setSelectedText} />
-          </div>
-        </div>
+        ) : (
+          <Preview content={currentDoc?.content || ''} />
+        )}
       </div>
-      
+
       <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />
-      
+
       <Sidebar documents={documents} currentDocId={currentDocId} onSelect={selectDocument} onCreate={(content) => createDocument(content)} onDelete={deleteDocument} isOpen={showSidebar} onClose={() => setShowSidebar(false)} />
       <TemplateModal isOpen={showTemplateModal} onClose={() => setShowTemplateModal(false)} onSelect={(content) => createDocument(content)} />
       <ExportModal isOpen={showExportModal} onClose={() => setShowExportModal(false)} content={currentDoc?.content || ''} title={currentDoc?.title || 'document'} />
-      <AIPanel selectedText={selectedText} onApplyResult={handleApplyResult} isOpen={showAIPanel} onClose={() => setShowAIPanel(false)} />
+      <AIPanel selectedText={selectedText} onReplaceResult={handleReplaceResult} isOpen={showAIPanel} onClose={() => setShowAIPanel(false)} />
       <SettingsPanel isOpen={showSettings} onClose={() => setShowSettings(false)} theme={theme} onThemeChange={setTheme} />
     </div>
   );

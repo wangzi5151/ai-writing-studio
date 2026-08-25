@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">AI Writing Studio</string>
+    <string name="title_activity_main">AI Writing Studio</string>
+    <string name="package_name">com.wangzi5151.aiwritingstudio</string>
+    <string name="custom_url_scheme">com.wangzi5151.aiwritingstudio</string>
+</resources>

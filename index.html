@@ -2,58 +2,15 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#6750A4" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>AI Writing Studio</title>
-    <script src="https://js.puter.com/v2/"></script>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/marked/marked.min.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/codemirror@5/lib/codemirror.css">
-    <script src="https://unpkg.com/codemirror@5/lib/codemirror.js"></script>
-    <script src="https://unpkg.com/codemirror@5/mode/markdown/markdown.js"></script>
-    <script src="https://unpkg.com/codemirror@5/mode/javascript/javascript.js"></script>
-    <script src="https://unpkg.com/codemirror@5/mode/xml/xml.js"></script>
-    <script src="https://unpkg.com/codemirror@5/mode/css/css.js"></script>
-    <script src="https://unpkg.com/codemirror@5/addon/edit/continuelist.js"></script>
-    <script src="https://unpkg.com/codemirror@5/addon/edit/closebrackets.js"></script>
-    <script src="https://unpkg.com/codemirror@5/addon/edit/matchbrackets.js"></script>
-    <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1b26; color: #c0caf5; min-height: 100vh; }
-      #root { min-height: 100vh; }
-      .CodeMirror { height: 100% !important; background: #1a1b26 !important; color: #c0caf5 !important; font-family: 'JetBrains Mono', monospace !important; font-size: 14px; }
-      .CodeMirror-gutters { background: #1a1b26 !important; border-right: 1px solid #3b4261 !important; }
-      .CodeMirror-linenumber { color: #3b4261 !important; }
-      .CodeMirror-cursor { border-left-color: #c0caf5 !important; }
-      .CodeMirror-selected { background: #33467c !important; }
-      .CodeMirror-activeline-background { background: #24283b !important; }
-      .markdown-preview { line-height: 1.8; }
-      .markdown-preview h1 { font-size: 2em; font-weight: bold; margin: 0.67em 0; color: #7aa2f7; border-bottom: 1px solid #3b4261; padding-bottom: 0.3em; }
-      .markdown-preview h2 { font-size: 1.5em; font-weight: bold; margin: 0.83em 0; color: #bb9af7; border-bottom: 1px solid #3b4261; padding-bottom: 0.3em; }
-      .markdown-preview h3 { font-size: 1.17em; font-weight: bold; margin: 1em 0; color: #7dcfff; }
-      .markdown-preview p { margin: 1em 0; }
-      .markdown-preview a { color: #7aa2f7; text-decoration: underline; }
-      .markdown-preview code { background: #3b4261; padding: 0.2em 0.4em; border-radius: 3px; font-family: monospace; font-size: 0.9em; }
-      .markdown-preview pre { background: #24283b; padding: 1em; border-radius: 8px; overflow-x: auto; margin: 1em 0; }
-      .markdown-preview pre code { background: none; padding: 0; }
-      .markdown-preview blockquote { border-left: 4px solid #7aa2f7; padding-left: 1em; margin: 1em 0; color: #a9b1d6; }
-      .markdown-preview ul, .markdown-preview ol { padding-left: 2em; margin: 1em 0; }
-      .markdown-preview li { margin: 0.5em 0; }
-      .markdown-preview table { border-collapse: collapse; width: 100%; margin: 1em 0; }
-      .markdown-preview th, .markdown-preview td { border: 1px solid #3b4261; padding: 0.5em 1em; text-align: left; }
-      .markdown-preview th { background: #24283b; font-weight: bold; }
-      .markdown-preview img { max-width: 100%; border-radius: 8px; }
-      .markdown-preview hr { border: none; border-top: 1px solid #3b4261; margin: 2em 0; }
-      ::-webkit-scrollbar { width: 8px; height: 8px; }
-      ::-webkit-scrollbar-track { background: #1a1b26; }
-      ::-webkit-scrollbar-thumb { background: #3b4261; border-radius: 4px; }
-      ::-webkit-scrollbar-thumb:hover { background: #565f89; }
-    </style>
   </head>
   <body>
     <div id="root"></div>
-    <script type="text/babel" src="/src/App.jsx"></script>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

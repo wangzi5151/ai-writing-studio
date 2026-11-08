@@ -1,9 +1,12 @@
-import { marked } from 'marked';
+import { renderMarkdown } from './markdown';
 
-marked.setOptions({
-  breaks: true,
-  gfm: true
-});
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 export function exportMarkdown(content, filename = 'document') {
   const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
@@ -16,7 +19,7 @@ export function exportHTML(content, filename = 'document') {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${filename}</title>
+  <title>${escapeHtml(filename)}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { 
@@ -47,7 +50,7 @@ export function exportHTML(content, filename = 'document') {
   </style>
 </head>
 <body>
-${marked.parse(content)}
+${renderMarkdown(content)}
 </body>
 </html>`;
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });

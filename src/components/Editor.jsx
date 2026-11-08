@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
@@ -32,10 +32,20 @@ const darkTheme = EditorView.theme({
   }
 }, { dark: true });
 
-export default function Editor({ value, onChange }) {
+export default function Editor({ value, onChange, onSelectionChange, darkMode }) {
   const handleChange = React.useCallback((val) => {
     onChange(val);
   }, [onChange]);
+
+  const selectionListener = useMemo(
+    () => EditorView.updateListener.of((update) => {
+      if (update.selectionSet || update.docChanged) {
+        const { from, to } = update.state.selection.main;
+        onSelectionChange?.(update.state.sliceDoc(from, to), from, to);
+      }
+    }),
+    [onSelectionChange]
+  );
 
   return (
     <div className="h-full">
@@ -44,9 +54,10 @@ export default function Editor({ value, onChange }) {
         onChange={handleChange}
         extensions={[
           markdown({ base: markdownLanguage, codeLanguages: languages }),
-          EditorView.lineWrapping
+          EditorView.lineWrapping,
+          selectionListener
         ]}
-        theme={darkTheme}
+        theme={darkMode ? darkTheme : 'light'}
         basicSetup={{
           lineNumbers: true,
           highlightActiveLineGutter: true,

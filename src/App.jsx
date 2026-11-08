@@ -1,4 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import Editor from './components/Editor.jsx';
+import Preview from './components/Preview.jsx';
+import { renderMarkdown } from './utils/markdown';
+import { useAI } from './hooks/useAI';
 
 const TEMPLATES = {
   blank: { name: 'Blank', content: '' },
@@ -42,43 +46,6 @@ const AI_MODES = [
   { id: 'formal', name: 'Formal', desc: 'Make more professional' },
   { id: 'creative', name: 'Creative', desc: 'Add creative flair' },
 ];
-
-const AI_PROMPTS = {
-  polish: 'Polish this text for grammar, clarity, and flow. Fix errors and improve readability while maintaining the original meaning:',
-  expand: 'Expand this text with more details, examples, and explanations. Make it more comprehensive:',
-  shorten: 'Shorten this text while keeping the key information. Make it more concise:',
-  translate: 'Translate this text to English. If already in English, translate to Spanish:',
-  summarize: 'Create a concise summary of this text highlighting the main points:',
-  continue: 'Continue writing from this text. Maintain the same style and tone:',
-  formal: 'Rewrite this text in a more formal, professional tone:',
-  creative: 'Rewrite this text with more creative and engaging language:',
-};
-
-function useAI() {
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState(null);
-
-  const processText = useCallback(async (text, mode, customPrompt) => {
-    if (!window.puter) {
-      setError('AI service not available. Please check your connection.');
-      return null;
-    }
-    setIsProcessing(true);
-    setError(null);
-    try {
-      const prompt = customPrompt || AI_PROMPTS[mode] || AI_PROMPTS.polish;
-      const response = await window.puter.ai.chat(prompt + '\n\n' + text);
-      setIsProcessing(false);
-      return response;
-    } catch (err) {
-      setIsProcessing(false);
-      setError('Failed to process text. Please try again.');
-      return null;
-    }
-  }, []);
-
-  return { processText, isProcessing, error };
-}
 
 function useLocalStorage(key, initialValue) {
   const [value, setValue] = useState(() => {
@@ -166,7 +133,7 @@ function TemplateModal({ onSelect, onClose }) {
 function ExportModal({ content, title, onClose, onToast }) {
   const doExport = (format) => {
     let blob, filename;
-    const html = window.marked ? window.marked.parse(content) : content;
+    const html = renderMarkdown(content);
 
     if (format === 'markdown') {
       blob = new Blob([content], { type: 'text/markdown' });
@@ -258,7 +225,7 @@ function SettingsPanel({ darkMode, setDarkMode, onClose }) {
           <div className="border-t dark:border-gray-700 pt-6">
             <div className="font-semibold text-gray-900 dark:text-white mb-3">About</div>
             <div className="text-sm text-gray-500 dark:text-gray-400 space-y-1">
-              <p>AI Writing Studio v1.0</p>
+              <p>AI Writing Studio v1.2.0</p>
               <p>A beautiful markdown editor with AI-powered writing assistance.</p>
             </div>
           </div>
@@ -277,6 +244,14 @@ function SettingsPanel({ darkMode, setDarkMode, onClose }) {
 }
 
 function Sidebar({ documents, currentId, onSelect, onNew, onDelete, onClose }) {
+  const [search, setSearch] = useState('');
+  const query = search.trim().toLowerCase();
+  const filtered = query
+    ? documents.filter(doc =>
+        (doc.title || 'Untitled').toLowerCase().includes(query) ||
+        (doc.content || '').toLowerCase().includes(query))
+    : documents;
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex justify-start" onClick={onClose}>
       <div className="bg-white dark:bg-gray-800 w-full max-w-sm h-full shadow-2xl flex flex-col border-r border-gray-200 dark:border-gray-700" onClick={e => e.stopPropagation()} style={{ animation: 'slideFromLeft 0.3s ease-out' }}>
@@ -287,19 +262,34 @@ function Sidebar({ documents, currentId, onSelect, onNew, onDelete, onClose }) {
           </button>
         </div>
 
-        <div className="p-4">
+        <div className="p-4 space-y-3">
           <button onClick={() => { onNew(); onClose(); }}
             className="w-full p-3 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 transition-colors flex items-center justify-center gap-2 font-semibold text-sm shadow-lg shadow-indigo-500/25">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
             New Document
           </button>
+          <div className="relative">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="search"
+              aria-label="Search documents"
+              placeholder="Search documents..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 pt-0 space-y-2">
-          {documents.length === 0 && (
-            <div className="text-center py-8 text-gray-400 dark:text-gray-500 text-sm">No documents yet</div>
+          {filtered.length === 0 && (
+            <div className="text-center py-8 text-gray-400 dark:text-gray-500 text-sm">
+              {query ? 'No matching documents' : 'No documents yet'}
+            </div>
           )}
-          {documents.map(doc => (
+          {filtered.map(doc => (
             <div key={doc.id} onClick={() => { onSelect(doc.id); onClose(); }}
               className={'p-3 rounded-xl cursor-pointer transition-all flex items-center justify-between group ' + (doc.id === currentId ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 border border-transparent')}>
               <div className="flex-1 min-w-0">
@@ -320,18 +310,21 @@ function Sidebar({ documents, currentId, onSelect, onNew, onDelete, onClose }) {
   );
 }
 
-function AIPanel({ content, onApply, onClose, onToast }) {
-  const { processText, isProcessing, error } = useAI();
+function AIPanel({ content, selectedText, onApply, onClose, onToast }) {
+  const { processText, isProcessing, error, cancel } = useAI();
   const [selectedMode, setSelectedMode] = useState('polish');
   const [customPrompt, setCustomPrompt] = useState('');
   const [result, setResult] = useState('');
 
+  const hasSelection = Boolean(selectedText && selectedText.trim());
+  const sourceText = hasSelection ? selectedText : content;
+
   const handleProcess = async () => {
-    if (!content || !content.trim()) {
+    if (!sourceText || !sourceText.trim()) {
       onToast('No text to process', 'error');
       return;
     }
-    const output = await processText(content, selectedMode, customPrompt);
+    const output = await processText(sourceText, selectedMode, customPrompt);
     if (output) {
       setResult(typeof output === 'string' ? output : JSON.stringify(output));
     }
@@ -339,9 +332,10 @@ function AIPanel({ content, onApply, onClose, onToast }) {
 
   const handleApply = () => {
     if (result) {
-      onApply(result);
-      onToast('AI text applied to editor', 'success');
+      onApply(result, hasSelection);
+      onToast(hasSelection ? 'AI text replaced the selection' : 'AI text applied to editor', 'success');
       setResult('');
+      onClose();
     }
   };
 
@@ -363,6 +357,17 @@ function AIPanel({ content, onApply, onClose, onToast }) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className={'p-3 rounded-xl text-sm border ' + (hasSelection ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300' : 'bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300')}>
+            {hasSelection ? (
+              <>
+                <div className="font-semibold mb-1">Selected text</div>
+                <div className="max-h-24 overflow-y-auto whitespace-pre-wrap text-xs">{selectedText}</div>
+              </>
+            ) : (
+              'No selection — the whole document will be processed.'
+            )}
+          </div>
+
           <div>
             <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">AI Mode</label>
             <div className="grid grid-cols-2 gap-2">
@@ -384,14 +389,21 @@ function AIPanel({ content, onApply, onClose, onToast }) {
             />
           </div>
 
-          <button onClick={handleProcess} disabled={isProcessing}
-            className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold hover:from-indigo-600 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/25">
-            {isProcessing ? (
-              <><svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 11-6.219-8.56" /></svg> Processing...</>
-            ) : (
-              <><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg> Run AI</>
+          <div className="flex gap-2">
+            <button onClick={handleProcess} disabled={isProcessing}
+              className="flex-1 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold hover:from-indigo-600 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/25">
+              {isProcessing ? (
+                <><svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 11-6.219-8.56" /></svg> Processing...</>
+              ) : (
+                <><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg> {hasSelection ? 'Run AI on Selection' : 'Run AI'}</>
+              )}
+            </button>
+            {isProcessing && (
+              <button onClick={cancel} className="px-4 py-3 rounded-xl bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                Cancel
+              </button>
             )}
-          </button>
+          </div>
 
           {error && (
             <div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">{error}</div>
@@ -401,7 +413,7 @@ function AIPanel({ content, onApply, onClose, onToast }) {
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Result</label>
-                <button onClick={handleApply} className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-semibold hover:bg-emerald-600 transition-colors">Apply to Editor</button>
+                <button onClick={handleApply} className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-semibold hover:bg-emerald-600 transition-colors">{hasSelection ? 'Replace Selection' : 'Apply to Editor'}</button>
               </div>
               <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap max-h-60 overflow-y-auto">{result}</div>
             </div>
@@ -412,87 +424,29 @@ function AIPanel({ content, onApply, onClose, onToast }) {
   );
 }
 
-function Editor({ content, onChange, editorRef }) {
-  const textareaRef = useRef(null);
-  const cmRef = useRef(null);
-
-  useEffect(() => {
-    if (textareaRef.current && !cmRef.current && window.CodeMirror) {
-      cmRef.current = window.CodeMirror.fromTextArea(textareaRef.current, {
-        mode: 'markdown',
-        lineNumbers: true,
-        lineWrapping: true,
-        theme: document.documentElement.classList.contains('dark') ? 'monokai' : 'default',
-        extraKeys: {
-          'Ctrl-S': function() {},
-          'Cmd-S': function() {},
-        },
-      });
-
-      cmRef.current.on('change', () => {
-        const val = cmRef.current.getValue();
-        onChange(val);
-      });
-
-      if (editorRef) editorRef.current = cmRef.current;
-    }
-  }, []);
-
-  useEffect(() => {
-    if (cmRef.current && cmRef.current.getValue() !== content) {
-      cmRef.current.setValue(content || '');
-    }
-  }, [content]);
-
-  useEffect(() => {
-    if (cmRef.current) {
-      const isDark = document.documentElement.classList.contains('dark');
-      cmRef.current.setOption('theme', isDark ? 'monokai' : 'default');
-    }
-  });
-
-  return (
-    <div className="h-full">
-      <textarea ref={textareaRef} defaultValue={content || ''} className="hidden" />
-      <style>{`
-        .CodeMirror { height: 100% !important; font-size: 15px; font-family: 'JetBrains Mono', 'Fira Code', monospace; border-radius: 0; }
-        .cm-s-default .cm-header { color: #1a1a2e; font-weight: bold; }
-        .cm-s-default .cm-em { font-style: italic; }
-        .cm-s-default .cm-strong { font-weight: bold; }
-        .cm-s-monokai .cm-header { color: #f8f8f2; font-weight: bold; }
-        .cm-s-monokai .cm-em { font-style: italic; color: #ae81ff; }
-        .cm-s-monokai .cm-strong { font-weight: bold; color: #a6e22e; }
-      `}</style>
-    </div>
-  );
+function makeDocument() {
+  return {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+    title: 'Untitled',
+    content: '',
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
 }
 
-function Preview({ content }) {
-  const html = useMemo(() => {
-    if (!content) return '<p class="text-gray-400 dark:text-gray-500 italic">Nothing to preview yet...</p>';
-    if (window.marked) {
-      try {
-        return window.marked.parse(content);
-      } catch {
-        return '<p class="text-red-500">Error parsing markdown</p>';
-      }
-    }
-    return '<p class="text-gray-400">Markdown library not loaded</p>';
-  }, [content]);
-
-  return (
-    <div className="h-full overflow-y-auto p-6 md:p-8">
-      <div className="max-w-3xl mx-auto prose prose-gray dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-white prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-a:text-indigo-500 prose-strong:text-gray-900 dark:prose-strong:text-white prose-code:text-indigo-500 dark:prose-code:text-indigo-400 prose-pre:bg-gray-900 dark:prose-pre:bg-gray-800 prose-blockquote:border-indigo-500"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-    </div>
-  );
+function deriveTitle(text) {
+  if (!text) return 'Untitled';
+  const match = text.match(/^#\s+(.+)/m);
+  return match ? match[1].trim() : text.split('\n')[0].trim().slice(0, 60) || 'Untitled';
 }
 
 export default function App() {
   const [documents, setDocuments] = useLocalStorage('ai-studio-docs', []);
   const [currentId, setCurrentId] = useState(null);
   const [content, setContent] = useState('');
+  const [savedContent, setSavedContent] = useState('');
+  const [saveState, setSaveState] = useState('saved');
+  const [selection, setSelection] = useState({ text: '', from: 0, to: 0 });
   const [activeTab, setActiveTab] = useState('editor');
   const [showSidebar, setShowSidebar] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -500,21 +454,14 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [toast, setToast] = useState(null);
-  const editorRef = useRef(null);
+  const initializedRef = useRef(false);
 
-  const { darkMode, setDarkMode } = (() => {
-    const [darkMode, setDarkMode] = useLocalStorage('ai-studio-dark', false);
-    useEffect(() => {
-      document.documentElement.classList.toggle('dark', darkMode);
-    }, [darkMode]);
-    return { darkMode, setDarkMode };
-  })();
+  const [darkMode, setDarkMode] = useLocalStorage('ai-studio-dark', false);
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode);
+  }, [darkMode]);
 
-  const title = useMemo(() => {
-    if (!content) return 'Untitled';
-    const match = content.match(/^#\s+(.+)/m);
-    return match ? match[1].trim() : content.split('\n')[0].trim().slice(0, 60) || 'Untitled';
-  }, [content]);
+  const title = useMemo(() => deriveTitle(content), [content]);
 
   const wordCount = useMemo(() => {
     if (!content) return { words: 0, lines: 0, chars: 0 };
@@ -530,69 +477,118 @@ export default function App() {
     setToast({ message, type, key: Date.now() });
   }, []);
 
-  const saveDocument = useCallback(() => {
-    setDocuments(prev => {
-      const existing = prev.find(d => d.id === currentId);
-      if (existing) {
-        return prev.map(d => d.id === currentId ? { ...d, content, title, updatedAt: Date.now() } : d);
-      }
-      return prev;
-    });
-  }, [currentId, content, title, setDocuments]);
+  const persistDocument = useCallback((id, text) => {
+    if (!id) return;
+    const nextTitle = deriveTitle(text);
+    setDocuments(prev => prev.map(d => d.id === id
+      ? { ...d, content: text, title: nextTitle, updatedAt: Date.now() }
+      : d));
+    setSavedContent(text);
+    setSaveState('saved');
+  }, [setDocuments]);
 
-  const newDocument = useCallback(() => {
-    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-    const doc = { id, title: 'Untitled', content: '', createdAt: Date.now(), updatedAt: Date.now() };
-    setDocuments(prev => [doc, ...prev]);
-    setCurrentId(id);
-    setContent('');
-    showToast('New document created', 'success');
-  }, [setDocuments, showToast]);
+  useEffect(() => {
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      if (documents.length === 0) {
+        const doc = makeDocument();
+        setDocuments([doc]);
+        setCurrentId(doc.id);
+      } else {
+        const doc = documents[0];
+        setCurrentId(doc.id);
+        setContent(doc.content || '');
+        setSavedContent(doc.content || '');
+      }
+    }
+  }, [documents, setDocuments]);
+
+  const saveNow = useCallback((text = content) => {
+    if (!currentId) return false;
+    persistDocument(currentId, text);
+    return true;
+  }, [currentId, content, persistDocument]);
+
+  useEffect(() => {
+    if (!currentId) return;
+    if (content === savedContent) {
+      setSaveState('saved');
+      return;
+    }
+    setSaveState('dirty');
+    const timer = setTimeout(() => persistDocument(currentId, content), 700);
+    return () => clearTimeout(timer);
+  }, [content, savedContent, currentId, persistDocument]);
 
   const selectDocument = useCallback((id) => {
+    if (id === currentId) return;
+    if (currentId && content !== savedContent) persistDocument(currentId, content);
     const doc = documents.find(d => d.id === id);
     if (doc) {
       setCurrentId(id);
       setContent(doc.content || '');
+      setSavedContent(doc.content || '');
+      setSaveState('saved');
+      setSelection({ text: '', from: 0, to: 0 });
     }
-  }, [documents]);
+  }, [currentId, content, savedContent, documents, persistDocument]);
+
+  const newDocument = useCallback(() => {
+    if (currentId && content !== savedContent) persistDocument(currentId, content);
+    const doc = makeDocument();
+    setDocuments(prev => [doc, ...prev]);
+    setCurrentId(doc.id);
+    setContent('');
+    setSavedContent('');
+    setSaveState('saved');
+    setSelection({ text: '', from: 0, to: 0 });
+    showToast('New document created', 'success');
+  }, [currentId, content, savedContent, persistDocument, setDocuments, showToast]);
 
   const deleteDocument = useCallback((id) => {
-    setDocuments(prev => {
-      const next = prev.filter(d => d.id !== id);
-      if (id === currentId && next.length > 0) {
-        setCurrentId(next[0].id);
-        setContent(next[0].content || '');
-      } else if (id === currentId) {
-        setCurrentId(null);
-        setContent('');
-      }
-      return next;
-    });
+    if (id !== currentId && currentId && content !== savedContent) {
+      persistDocument(currentId, content);
+    }
+    let next = documents.filter(d => d.id !== id);
+    if (next.length === 0) next = [makeDocument()];
+    setDocuments(next);
+    if (id === currentId) {
+      const doc = next[0];
+      setCurrentId(doc.id);
+      setContent(doc.content || '');
+      setSavedContent(doc.content || '');
+      setSaveState('saved');
+      setSelection({ text: '', from: 0, to: 0 });
+    }
     showToast('Document deleted', 'info');
-  }, [currentId, setDocuments, showToast]);
+  }, [documents, currentId, content, savedContent, persistDocument, setDocuments, showToast]);
 
   const applyTemplate = useCallback((templateContent) => {
     setContent(templateContent);
-    if (currentId) {
-      setDocuments(prev => prev.map(d => d.id === currentId ? { ...d, content: templateContent, updatedAt: Date.now() } : d));
-    }
+    setSelection({ text: '', from: 0, to: 0 });
+    if (currentId) persistDocument(currentId, templateContent);
     showToast('Template applied', 'success');
-  }, [currentId, setDocuments, showToast]);
+  }, [currentId, persistDocument, showToast]);
 
-  const applyAIResult = useCallback((aiContent) => {
-    setContent(aiContent);
-    if (currentId) {
-      setDocuments(prev => prev.map(d => d.id === currentId ? { ...d, content: aiContent, updatedAt: Date.now() } : d));
-    }
-  }, [currentId, setDocuments]);
+  const applyAIResult = useCallback((aiContent, useSelection) => {
+    const hasRange = useSelection && selection.to > selection.from && selection.to <= content.length;
+    const next = hasRange
+      ? content.slice(0, selection.from) + aiContent + content.slice(selection.to)
+      : aiContent;
+    setContent(next);
+    setSelection({ text: '', from: 0, to: 0 });
+    if (currentId) persistDocument(currentId, next);
+  }, [content, selection, currentId, persistDocument]);
+
+  const handleSelectionChange = useCallback((text, from, to) => {
+    setSelection({ text, from, to });
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
-        saveDocument();
-        showToast('Document saved', 'success');
+        if (saveNow()) showToast('Document saved', 'success');
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
         e.preventDefault();
@@ -601,21 +597,28 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [saveDocument, newDocument, showToast]);
+  }, [saveNow, newDocument, showToast]);
 
   useEffect(() => {
-    if (documents.length === 0) {
-      newDocument();
-    } else if (!currentId && documents.length > 0) {
-      setCurrentId(documents[0].id);
-      setContent(documents[0].content || '');
-    }
-  }, []);
-
-  const tabs = [
-    { id: 'editor', label: 'Editor' },
-    { id: 'preview', label: 'Preview' },
-  ];
+    const handleBeforeUnload = (e) => {
+      if (content !== savedContent) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden' && currentId && content !== savedContent) {
+        persistDocument(currentId, content);
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [content, savedContent, currentId, persistDocument]);
 
   return (
     <div className="h-screen flex flex-col bg-white dark:bg-gray-900 transition-colors">
@@ -629,7 +632,7 @@ export default function App() {
       {/* Top Bar */}
       <header className="h-14 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md z-30 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <button onClick={() => setShowSidebar(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors">
+          <button onClick={() => setShowSidebar(true)} aria-label="Open documents" className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="18" x2="21" y2="18" /></svg>
           </button>
           <div className="flex items-center gap-2">
@@ -662,7 +665,7 @@ export default function App() {
       {/* Content Area */}
       <div className="flex-1 overflow-hidden">
         {activeTab === 'editor' ? (
-          <Editor content={content} onChange={setContent} editorRef={editorRef} />
+          <Editor value={content} onChange={setContent} onSelectionChange={handleSelectionChange} darkMode={darkMode} />
         ) : (
           <Preview content={content} />
         )}
@@ -675,8 +678,11 @@ export default function App() {
           <span>{wordCount.lines} lines</span>
           <span>{wordCount.chars} chars</span>
         </div>
-        <div className="text-[11px] text-gray-400 dark:text-gray-500">
-          {title}
+        <div className="flex items-center gap-3 text-[11px] text-gray-400 dark:text-gray-500">
+          <span data-testid="save-status" className={saveState === 'dirty' ? 'text-amber-500 font-medium' : ''}>
+            {saveState === 'dirty' ? 'Unsaved' : 'Saved'}
+          </span>
+          <span>{title}</span>
         </div>
       </div>
 
@@ -709,7 +715,7 @@ export default function App() {
       {showTemplates && <TemplateModal onSelect={applyTemplate} onClose={() => setShowTemplates(false)} />}
       {showExport && <ExportModal content={content} title={title} onClose={() => setShowExport(false)} onToast={showToast} />}
       {showSettings && <SettingsPanel darkMode={darkMode} setDarkMode={setDarkMode} onClose={() => setShowSettings(false)} />}
-      {showAI && <AIPanel content={content} onApply={applyAIResult} onClose={() => setShowAI(false)} onToast={showToast} />}
+      {showAI && <AIPanel content={content} selectedText={selection.text} onApply={applyAIResult} onClose={() => setShowAI(false)} onToast={showToast} />}
 
       {/* Toast */}
       {toast && <Toast key={toast.key} message={toast.message} type={toast.type} onClose={() => setToast(null)} />}

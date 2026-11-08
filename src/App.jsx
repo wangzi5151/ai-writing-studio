@@ -1,388 +1,724 @@
-const { useState, useEffect, useCallback, useRef, useMemo } = React;
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import Editor from './components/Editor.jsx';
+import Preview from './components/Preview.jsx';
+import { renderMarkdown } from './utils/markdown';
+import { useAI } from './hooks/useAI';
 
-const STORAGE_KEY = 'ai-writing-studio-docs';
-
-const createDefaultDoc = () => ({
-  id: Date.now().toString(),
-  title: '无标题文档',
-  content: '# 欢迎使用 AI Writing Studio\n\n这是一个 AI 驱动的 Markdown 写作助手。\n\n## 功能特点\n\n- **Markdown 编辑器** - 支持实时预览\n- **AI 写作模式** - 润色/扩写/缩写/翻译/总结/续写\n- **文档管理** - 本地存储，自动保存\n\n## 快速开始\n\n1. 在左侧编写 Markdown\n2. 右侧实时预览\n3. 选中文本，点击 AI 按钮进行处理\n\n---\n\n开始你的写作之旅吧！',
-  createdAt: Date.now(),
-  updatedAt: Date.now()
-});
+const TEMPLATES = {
+  blank: { name: 'Blank', content: '' },
+  blog: {
+    name: 'Blog Post',
+    content: '# Blog Title\n\n## Introduction\n\nWrite your introduction here...\n\n## Main Content\n\n### Subheading\n\nYour content here...\n\n## Conclusion\n\nWrap up your thoughts here...',
+  },
+  email: {
+    name: 'Email',
+    content: '# Subject:\n\nDear [Name],\n\nI hope this email finds you well.\n\n[Body]\n\nBest regards,\n[Your Name]',
+  },
+  resume: {
+    name: 'Resume',
+    content: '# [Your Name]\n\n## Contact\n- Email: your.email@example.com\n- Phone: (555) 123-4567\n\n## Experience\n\n### Job Title - Company Name\n*Date Range*\n- Achievement 1\n- Achievement 2\n\n## Education\n\n### Degree - Institution\n*Graduation Date*',
+  },
+  essay: {
+    name: 'Essay',
+    content: '# Essay Title\n\n## Introduction\n\nHook the reader with an interesting opening...\n\n## Body Paragraph 1\n\nTopic sentence and supporting details...\n\n## Body Paragraph 2\n\nAnother perspective or argument...\n\n## Conclusion\n\nSummarize your main points...',
+  },
+  meeting: {
+    name: 'Meeting Notes',
+    content: '# Meeting Notes - [Date]\n\n## Attendees\n- Person 1\n- Person 2\n\n## Agenda\n1. Item 1\n2. Item 2\n\n## Discussion\n\nNotes from discussion...\n\n## Action Items\n- [ ] Task 1 - Assigned to\n- [ ] Task 2 - Assigned to\n\n## Next Meeting\n[Date/Time]',
+  },
+  todo: {
+    name: 'Todo List',
+    content: '# Todo List\n\n## High Priority\n- [ ] Task 1\n- [ ] Task 2\n\n## Medium Priority\n- [ ] Task 3\n- [ ] Task 4\n\n## Low Priority\n- [ ] Task 5\n- [ ] Task 6',
+  },
+  idea: {
+    name: 'Idea Capture',
+    content: '# Idea: [Title]\n\n## Problem\nWhat problem does this solve?\n\n## Solution\nHow would you solve it?\n\n## Benefits\n- Benefit 1\n- Benefit 2\n- Benefit 3\n\n## Next Steps\n1. Step 1\n2. Step 2',
+  },
+};
 
 const AI_MODES = [
-  { id: 'polish', name: '润色', icon: '✨', desc: '优化文本流畅度' },
-  { id: 'expand', name: '扩写', icon: '📝', desc: '添加更多细节' },
-  { id: 'shorten', name: '缩写', icon: '✂️', desc: '精简保留核心' },
-  { id: 'translate', name: '翻译', icon: '🌐', desc: '翻译为其他语言' },
-  { id: 'summarize', name: '总结', icon: '📋', desc: '提取关键要点' },
-  { id: 'continue', name: '续写', icon: '➡️', desc: '继续创作内容' }
+  { id: 'polish', name: 'Polish', desc: 'Improve grammar and clarity' },
+  { id: 'expand', name: 'Expand', desc: 'Add more detail and content' },
+  { id: 'shorten', name: 'Shorten', desc: 'Make more concise' },
+  { id: 'translate', name: 'Translate', desc: 'Translate to another language' },
+  { id: 'summarize', name: 'Summarize', desc: 'Create a summary' },
+  { id: 'continue', name: 'Continue', desc: 'Continue writing' },
+  { id: 'formal', name: 'Formal', desc: 'Make more professional' },
+  { id: 'creative', name: 'Creative', desc: 'Add creative flair' },
 ];
 
-const LANGUAGES = [
-  { value: '英文', label: 'English' },
-  { value: '中文', label: '中文' },
-  { value: '日文', label: '日本語' },
-  { value: '韩文', label: '한국어' },
-  { value: '法文', label: 'Français' },
-  { value: '德文', label: 'Deutsch' },
-  { value: '西班牙文', label: 'Español' }
-];
-
-function useDocuments() {
-  const [documents, setDocuments] = useState([]);
-  const [currentDocId, setCurrentDocId] = useState(null);
-
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const docs = JSON.parse(saved);
-        setDocuments(docs);
-        if (docs.length > 0) setCurrentDocId(docs[0].id);
-      } catch {
-        const doc = createDefaultDoc();
-        setDocuments([doc]);
-        setCurrentDocId(doc.id);
-      }
-    } else {
-      const doc = createDefaultDoc();
-      setDocuments([doc]);
-      setCurrentDocId(doc.id);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (documents.length > 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(documents));
-    }
-  }, [documents]);
-
-  const currentDoc = documents.find(d => d.id === currentDocId) || documents[0];
-
-  const createDocument = useCallback(() => {
-    const newDoc = createDefaultDoc();
-    setDocuments(prev => [newDoc, ...prev]);
-    setCurrentDocId(newDoc.id);
-  }, []);
-
-  const updateDocument = useCallback((id, updates) => {
-    setDocuments(prev => prev.map(doc => 
-      doc.id === id ? { ...doc, ...updates, updatedAt: Date.now() } : doc
-    ));
-  }, []);
-
-  const deleteDocument = useCallback((id) => {
-    setDocuments(prev => {
-      const filtered = prev.filter(doc => doc.id !== id);
-      if (filtered.length === 0) {
-        const doc = createDefaultDoc();
-        setCurrentDocId(doc.id);
-        return [doc];
-      }
-      if (currentDocId === id) setCurrentDocId(filtered[0].id);
-      return filtered;
-    });
-  }, [currentDocId]);
-
-  return { documents, currentDoc, currentDocId, createDocument, updateDocument, deleteDocument, selectDocument: setCurrentDocId };
-}
-
-function useAI() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [result, setResult] = useState('');
-
-  const callAI = useCallback(async (prompt, text) => {
-    setLoading(true);
-    setError(null);
-    setResult('');
+function useLocalStorage(key, initialValue) {
+  const [value, setValue] = useState(() => {
     try {
-      const response = await puter.ai.chat(`${prompt}\n\n原文：\n${text}`, { model: 'openai/gpt-5.5', stream: true });
-      let full = '';
-      for await (const part of response) {
-        if (part?.text) { full += part.text; setResult(full); }
-      }
-      setLoading(false);
-      return full;
-    } catch (err) {
-      setError(err.message || 'AI 调用失败');
-      setLoading(false);
-      throw err;
+      const item = window.localStorage.getItem(key);
+      return item ? JSON.parse(item) : initialValue;
+    } catch {
+      return initialValue;
     }
-  }, []);
+  });
 
-  return {
-    loading, error, result, setResult,
-    polish: (t) => callAI('请润色以下文本，使其更流畅、专业，保持原意不变：', t),
-    expand: (t) => callAI('请扩展以下文本，添加更多细节和内容，使其更丰富完整：', t),
-    shorten: (t) => callAI('请精简以下文本，保留核心意思，去掉冗余内容：', t),
-    translate: (t, lang) => callAI(`请将以下文本翻译为${lang}：`, t),
-    summarize: (t) => callAI('请总结以下文本的要点，用简洁的语言概括：', t),
-    continueWriting: (t) => callAI('请根据以下内容继续写下去，保持风格一致：', t)
-  };
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      console.error('LocalStorage error');
+    }
+  }, [key, value]);
+
+  return [value, setValue];
 }
 
-function Header({ document, onUpdateTitle }) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [title, setTitle] = useState(document?.title || '');
-  useEffect(() => setTitle(document?.title || ''), [document?.title]);
-  const handleSave = () => { if (title.trim() && document) onUpdateTitle(document.id, title.trim()); setIsEditing(false); };
-  return (
-    <header className="h-12 border-b border-gray-700 flex items-center px-4 bg-gray-900/50">
-      <div className="flex items-center gap-2">
-        <svg className="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-        </svg>
-        <span className="font-semibold text-gray-200">AI Writing Studio</span>
-      </div>
-      <div className="flex-1 flex justify-center">
-        {isEditing ? (
-          <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={handleSave}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') { setTitle(document?.title || ''); setIsEditing(false); } }}
-            autoFocus className="bg-gray-800 border border-gray-600 rounded px-3 py-1 text-sm text-gray-200 focus:outline-none focus:border-blue-500 max-w-xs" />
-        ) : (
-          <button onClick={() => setIsEditing(true)} className="text-sm text-gray-400 hover:text-gray-200 truncate max-w-xs">
-            {document?.title || '无标题'}
-          </button>
-        )}
-      </div>
-      <div className="text-xs text-gray-500">{document ? new Date(document.updatedAt).toLocaleString('zh-CN') : ''}</div>
-    </header>
-  );
-}
 
-function Sidebar({ documents, currentDocId, onSelect, onCreate, onDelete }) {
-  const [search, setSearch] = useState('');
-  const filtered = documents.filter(d => d.title.toLowerCase().includes(search.toLowerCase()) || d.content.toLowerCase().includes(search.toLowerCase()));
-  const formatDate = (ts) => { const d = Date.now() - ts; if (d < 60000) return '刚刚'; if (d < 3600000) return `${Math.floor(d/60000)}分钟前`; if (d < 86400000) return `${Math.floor(d/3600000)}小时前`; return new Date(ts).toLocaleDateString('zh-CN'); };
+function Toast({ message, type, onClose }) {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 3000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  const bg = type === 'success' ? 'bg-emerald-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-3 border-b border-gray-700">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-gray-300">文档列表</h2>
-          <button onClick={onCreate} className="p-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg" title="新建文档">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-          </button>
-        </div>
-        <input type="text" placeholder="搜索文档..." value={search} onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-300 placeholder-gray-500 focus:outline-none focus:border-blue-500" />
-      </div>
-      <div className="flex-1 overflow-auto p-2">
-        {filtered.length === 0 ? (
-          <div className="text-center text-gray-500 text-sm py-8">{search ? '没有找到匹配的文档' : '暂无文档'}</div>
-        ) : (
-          <div className="space-y-1">
-            {filtered.map(doc => (
-              <div key={doc.id} onClick={() => onSelect(doc.id)}
-                className={`group p-3 rounded-lg cursor-pointer transition-colors ${doc.id === currentDocId ? 'bg-blue-600/20 border border-blue-500/30' : 'hover:bg-gray-800/50'}`}>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-200 truncate">{doc.title}</div>
-                    <div className="text-xs text-gray-500 mt-1">{formatDate(doc.updatedAt)}</div>
-                  </div>
-                  <button onClick={(e) => { e.stopPropagation(); if (confirm('确定删除此文档？')) onDelete(doc.id); }}
-                    className="p-1 opacity-0 group-hover:opacity-100 hover:bg-red-500/20 rounded">
-                    <svg className="w-4 h-4 text-gray-400 hover:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="p-3 border-t border-gray-700"><div className="text-xs text-gray-500 text-center">{documents.length} 个文档</div></div>
+    <div className={'fixed top-4 right-4 z-[100] ' + bg + ' text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3'} style={{ animation: 'slideIn 0.3s ease-out' }}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        {type === 'success' && <polyline points="20 6 9 17 4 12" />}
+        {type === 'error' && (<><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></>)}
+        {type === 'info' && (<><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></>)}
+      </svg>
+      <span className="text-sm font-medium">{message}</span>
+      <button onClick={onClose} className="ml-2 hover:opacity-75 transition-opacity">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+      </button>
     </div>
   );
 }
 
-function Editor({ value, onChange, onTextSelect }) {
-  const textareaRef = useRef(null);
-  const editorRef = useRef(null);
-
-  useEffect(() => {
-    if (textareaRef.current && !editorRef.current) {
-      editorRef.current = CodeMirror.fromTextArea(textareaRef.current, {
-        mode: 'markdown',
-        lineNumbers: true,
-        lineWrapping: true,
-        theme: 'default',
-        matchBrackets: true,
-        autoCloseBrackets: true,
-        extraKeys: {
-          'Enter': 'newlineAndIndentContinueMarkdownList'
-        }
-      });
-      editorRef.current.on('change', () => {
-        const val = editorRef.current.getValue();
-        onChange(val);
-      });
-      editorRef.current.on('cursorActivity', () => {
-        const sel = editorRef.current.getSelection();
-        if (sel) onTextSelect(sel);
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    if (editorRef.current) {
-      const currentVal = editorRef.current.getValue();
-      if (currentVal !== value) {
-        editorRef.current.setValue(value || '');
-      }
-    }
-  }, [value]);
-
-  return <div className="h-full"><textarea ref={textareaRef} /></div>;
-}
-
-function Preview({ content }) {
-  const html = useMemo(() => {
-    try { return marked.parse(content || ''); } 
-    catch { return '<p>渲染错误</p>'; }
-  }, [content]);
-  return <div className="h-full overflow-auto p-6"><div className="markdown-preview" dangerouslySetInnerHTML={{ __html: html }} /></div>;
-}
-
-function AIPanel({ selectedText, onApplyResult }) {
-  const { loading, error, result, setResult, polish, expand, shorten, translate, summarize, continueWriting } = useAI();
-  const [translateLang, setTranslateLang] = useState('英文');
-  const [activeMode, setActiveMode] = useState(null);
-
-  const handleAIAction = async (mode) => {
-    if (!selectedText.trim()) return;
-    setActiveMode(mode);
-    try {
-      switch (mode) {
-        case 'polish': await polish(selectedText); break;
-        case 'expand': await expand(selectedText); break;
-        case 'shorten': await shorten(selectedText); break;
-        case 'translate': await translate(selectedText, translateLang); break;
-        case 'summarize': await summarize(selectedText); break;
-        case 'continue': await continueWriting(selectedText); break;
-      }
-    } catch (err) { console.error(err); }
-    finally { setActiveMode(null); }
-  };
-
+function TemplateModal({ onSelect, onClose }) {
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-3 border-b border-gray-700"><h3 className="text-sm font-semibold text-gray-300">AI 助手</h3></div>
-      <div className="flex-1 overflow-auto p-3">
-        {selectedText && (
-          <div className="mb-4">
-            <div className="text-xs text-gray-500 mb-2">选中的文本</div>
-            <div className="text-sm text-gray-400 bg-gray-800/50 p-3 rounded-lg max-h-32 overflow-auto">{selectedText}</div>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-200 dark:border-gray-700" onClick={e => e.stopPropagation()} style={{ animation: 'scaleIn 0.2s ease-out' }}>
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Choose Template</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Start with a pre-built layout</p>
           </div>
-        )}
-        <div className="space-y-2">
-          {AI_MODES.map(mode => (
-            <button key={mode.id} onClick={() => handleAIAction(mode.id)} disabled={loading || !selectedText.trim()}
-              className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left ${activeMode === mode.id ? 'bg-blue-600/30 border border-blue-500/50' : 'bg-gray-800/50 hover:bg-gray-700/50'} disabled:opacity-50 disabled:cursor-not-allowed`}>
-              <span className="text-lg">{mode.icon}</span>
-              <div><div className="text-sm font-medium text-gray-200">{mode.name}</div><div className="text-xs text-gray-500">{mode.desc}</div></div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {Object.keys(TEMPLATES).map(key => (
+            <button key={key} onClick={() => { onSelect(TEMPLATES[key].content); onClose(); }}
+              className="p-4 rounded-xl border border-gray-200 dark:border-gray-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all text-left">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500 dark:text-indigo-400 mb-2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                {key === 'blog' && (<><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></>)}
+                {key === 'todo' && (<><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></>)}
+                {key === 'resume' && (<><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>)}
+                {key === 'meeting' && (<><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></>)}
+                {key === 'idea' && (<path d="M12 2a7 7 0 0 0-4 12.73V17h8v-2.27A7 7 0 0 0 12 2z" />)}
+                {key === 'email' && (<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />)}
+                {key === 'essay' && (<><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></>)}
+                {key === 'blank' && (<><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></>)}
+              </svg>
+              <div className="font-semibold text-gray-900 dark:text-white text-sm">{TEMPLATES[key].name}</div>
             </button>
           ))}
         </div>
-        <div className="mt-3">
-          <label className="text-xs text-gray-500 mb-1 block">翻译目标语言</label>
-          <select value={translateLang} onChange={(e) => setTranslateLang(e.target.value)}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-blue-500">
-            {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
-          </select>
-        </div>
-        {loading && (
-          <div className="mt-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-            <div className="flex items-center gap-2 text-blue-400">
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>
-              <span className="text-sm">AI 正在处理...</span>
-            </div>
-            {result && <div className="mt-3 text-sm text-gray-300 whitespace-pre-wrap max-h-48 overflow-auto">{result}</div>}
-          </div>
-        )}
-        {error && <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm text-red-400">{error}</div>}
-        {result && !loading && (
-          <div className="mt-4 space-y-2">
-            <div className="p-3 bg-gray-800/50 rounded-lg"><div className="text-xs text-gray-500 mb-2">AI 结果</div><div className="text-sm text-gray-300 whitespace-pre-wrap">{result}</div></div>
-            <div className="flex gap-2">
-              <button onClick={() => onApplyResult(result)} className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg">应用到编辑器</button>
-              <button onClick={() => setResult('')} className="px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-sm rounded-lg">清除</button>
-            </div>
-          </div>
-        )}
-        {!selectedText && !loading && <div className="text-center text-gray-500 text-sm py-8">在编辑器中选中文本后，点击上方按钮进行 AI 处理</div>}
       </div>
     </div>
   );
 }
 
-function App() {
-  const { documents, currentDoc, currentDocId, createDocument, updateDocument, deleteDocument, selectDocument } = useDocuments();
-  const [selectedText, setSelectedText] = useState('');
-  const [showSidebar, setShowSidebar] = useState(true);
-  const [showAIPanel, setShowAIPanel] = useState(true);
+function ExportModal({ content, title, onClose, onToast }) {
+  const doExport = (format) => {
+    let blob, filename;
+    const html = renderMarkdown(content);
 
-  const handleContentChange = useCallback((content) => {
-    if (currentDoc) {
-      const titleMatch = content.match(/^#\s+(.+)/m);
-      const newTitle = titleMatch ? titleMatch[1].trim() : '无标题文档';
-      updateDocument(currentDoc.id, { content, title: newTitle });
+    if (format === 'markdown') {
+      blob = new Blob([content], { type: 'text/markdown' });
+      filename = (title || 'document') + '.md';
+    } else if (format === 'html') {
+      const full = '<!DOCTYPE html><html><head><meta charset="utf-8"><title>' + title + '</title><style>body{font-family:system-ui,-apple-system,sans-serif;max-width:800px;margin:0 auto;padding:2rem;line-height:1.7;color:#333}h1,h2,h3{color:#1a1a2e}code{background:#f0f0f0;padding:2px 6px;border-radius:4px}pre{background:#1a1a2e;color:#e0e0e0;padding:1rem;border-radius:8px;overflow-x:auto}blockquote{border-left:4px solid #6366f1;margin:0;padding-left:1rem;color:#555}a{color:#6366f1}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f5f5f5}</style></head><body>' + html + '</body></html>';
+      blob = new Blob([full], { type: 'text/html' });
+      filename = (title || 'document') + '.html';
+    } else if (format === 'text') {
+      const text = content.replace(/[#*_`~\[\]]/g, '');
+      blob = new Blob([text], { type: 'text/plain' });
+      filename = (title || 'document') + '.txt';
     }
-  }, [currentDoc, updateDocument]);
 
-  const handleApplyResult = useCallback((result) => {
-    if (currentDoc) updateDocument(currentDoc.id, { content: currentDoc.content + '\n\n' + result });
-  }, [currentDoc, updateDocument]);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    onToast('Exported as ' + format.toUpperCase(), 'success');
+    onClose();
+  };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-900">
-      <Header document={currentDoc} onUpdateTitle={(id, title) => updateDocument(id, { title })} />
-      <div className="flex-1 flex overflow-hidden">
-        {showSidebar && (
-          <div className="w-64 border-r border-gray-700 flex-shrink-0">
-            <Sidebar documents={documents} currentDocId={currentDocId} onSelect={selectDocument} onCreate={createDocument} onDelete={deleteDocument} />
-          </div>
-        )}
-        <div className="flex-1 flex overflow-hidden">
-          <div className="flex-1 flex flex-col border-r border-gray-700">
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-700 bg-gray-800/30">
-              <button onClick={() => setShowSidebar(!showSidebar)} className="p-1.5 hover:bg-gray-700 rounded" title="切换侧边栏">
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
-              </button>
-              <span className="text-xs text-gray-500">编辑器</span>
-            </div>
-            <div className="flex-1 overflow-hidden"><Editor value={currentDoc?.content || ''} onChange={handleContentChange} onTextSelect={setSelectedText} /></div>
-          </div>
-          <div className="flex-1 flex flex-col">
-            <div className="px-3 py-2 border-b border-gray-700 bg-gray-800/30"><span className="text-xs text-gray-500">预览</span></div>
-            <div className="flex-1 overflow-hidden"><Preview content={currentDoc?.content || ''} /></div>
-          </div>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-gray-200 dark:border-gray-700" onClick={e => e.stopPropagation()} style={{ animation: 'scaleIn 0.2s ease-out' }}>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Export</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
         </div>
-        {showAIPanel && (
-          <div className="w-72 border-l border-gray-700 flex-shrink-0">
-            <AIPanel selectedText={selectedText} onApplyResult={handleApplyResult} />
-          </div>
-        )}
-        <button onClick={() => setShowAIPanel(!showAIPanel)}
-          className="absolute right-0 top-1/2 -translate-y-1/2 p-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-l-lg z-10"
-          style={{ right: showAIPanel ? '288px' : '0' }}>
-          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-          </svg>
-        </button>
+        <div className="space-y-3">
+          {[
+            { fmt: 'markdown', label: 'Markdown', sub: '.md file', iconPath: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' },
+            { fmt: 'html', label: 'HTML', sub: 'Web page format', iconPath: 'M13.5 6.5a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0z' },
+            { fmt: 'text', label: 'Plain Text', sub: '.txt file', iconPath: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' },
+          ].map(item => (
+            <button key={item.fmt} onClick={() => doExport(item.fmt)}
+              className="w-full p-4 rounded-xl border border-gray-200 dark:border-gray-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all text-left flex items-center gap-3">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500">
+                <path d={item.iconPath} />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+              <div>
+                <div className="font-semibold text-gray-900 dark:text-white text-sm">{item.label}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">{item.sub}</div>
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
-      <footer className="h-6 border-t border-gray-700 flex items-center px-4 bg-gray-900/50">
-        <div className="flex-1 flex items-center gap-4 text-xs text-gray-500">
-          <span>AI Writing Studio</span>
-          <span>|</span>
-          <span>{currentDoc ? `${currentDoc.content.length} 字符` : ''}</span>
-        </div>
-        <div className="text-xs text-gray-500">Powered by Puter.js</div>
-      </footer>
     </div>
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+function SettingsPanel({ darkMode, setDarkMode, onClose }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex justify-end" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 w-full max-w-sm h-full shadow-2xl p-6 overflow-y-auto border-l border-gray-200 dark:border-gray-700" onClick={e => e.stopPropagation()} style={{ animation: 'slideFromRight 0.3s ease-out' }}>
+        <div className="flex justify-between items-center mb-8">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Settings</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+        </div>
+
+        <div className="space-y-6">
+          <div className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600 dark:text-indigo-400">
+                  {darkMode ? (<><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></>) : (<><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></>)}
+                </svg>
+              </div>
+              <div>
+                <div className="font-semibold text-gray-900 dark:text-white text-sm">Dark Mode</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Toggle dark theme</div>
+              </div>
+            </div>
+            <button onClick={() => setDarkMode(!darkMode)} className={'w-12 h-6 rounded-full transition-colors relative ' + (darkMode ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-600')}>
+              <div className={'w-5 h-5 bg-white rounded-full shadow-md absolute top-0.5 transition-transform ' + (darkMode ? 'translate-x-[26px]' : 'translate-x-0.5')} />
+            </button>
+          </div>
+
+          <div className="border-t dark:border-gray-700 pt-6">
+            <div className="font-semibold text-gray-900 dark:text-white mb-3">About</div>
+            <div className="text-sm text-gray-500 dark:text-gray-400 space-y-1">
+              <p>AI Writing Studio v1.2.0</p>
+              <p>A beautiful markdown editor with AI-powered writing assistance.</p>
+            </div>
+          </div>
+
+          <div className="border-t dark:border-gray-700 pt-6">
+            <div className="font-semibold text-gray-900 dark:text-white mb-3">Keyboard Shortcuts</div>
+            <div className="text-sm text-gray-500 dark:text-gray-400 space-y-2">
+              <div className="flex justify-between"><span>Save document</span><kbd className="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs">Ctrl+S</kbd></div>
+              <div className="flex justify-between"><span>New document</span><kbd className="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs">Ctrl+N</kbd></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Sidebar({ documents, currentId, onSelect, onNew, onDelete, onClose }) {
+  const [search, setSearch] = useState('');
+  const query = search.trim().toLowerCase();
+  const filtered = query
+    ? documents.filter(doc =>
+        (doc.title || 'Untitled').toLowerCase().includes(query) ||
+        (doc.content || '').toLowerCase().includes(query))
+    : documents;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex justify-start" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 w-full max-w-sm h-full shadow-2xl flex flex-col border-r border-gray-200 dark:border-gray-700" onClick={e => e.stopPropagation()} style={{ animation: 'slideFromLeft 0.3s ease-out' }}>
+        <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">Documents</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+        </div>
+
+        <div className="p-4 space-y-3">
+          <button onClick={() => { onNew(); onClose(); }}
+            className="w-full p-3 rounded-xl bg-indigo-500 text-white hover:bg-indigo-600 transition-colors flex items-center justify-center gap-2 font-semibold text-sm shadow-lg shadow-indigo-500/25">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            New Document
+          </button>
+          <div className="relative">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="search"
+              aria-label="Search documents"
+              placeholder="Search documents..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 pt-0 space-y-2">
+          {filtered.length === 0 && (
+            <div className="text-center py-8 text-gray-400 dark:text-gray-500 text-sm">
+              {query ? 'No matching documents' : 'No documents yet'}
+            </div>
+          )}
+          {filtered.map(doc => (
+            <div key={doc.id} onClick={() => { onSelect(doc.id); onClose(); }}
+              className={'p-3 rounded-xl cursor-pointer transition-all flex items-center justify-between group ' + (doc.id === currentId ? 'bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 border border-transparent')}>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-gray-900 dark:text-white text-sm truncate">{doc.title || 'Untitled'}</div>
+                <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{new Date(doc.updatedAt).toLocaleDateString()}</div>
+              </div>
+              <button onClick={(e) => { e.stopPropagation(); onDelete(doc.id); }}
+                className="p-1.5 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-100 dark:hover:bg-red-900/30 transition-all">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-red-500">
+                  <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AIPanel({ content, selectedText, onApply, onClose, onToast }) {
+  const { processText, isProcessing, error, cancel } = useAI();
+  const [selectedMode, setSelectedMode] = useState('polish');
+  const [customPrompt, setCustomPrompt] = useState('');
+  const [result, setResult] = useState('');
+
+  const hasSelection = Boolean(selectedText && selectedText.trim());
+  const sourceText = hasSelection ? selectedText : content;
+
+  const handleProcess = async () => {
+    if (!sourceText || !sourceText.trim()) {
+      onToast('No text to process', 'error');
+      return;
+    }
+    const output = await processText(sourceText, selectedMode, customPrompt);
+    if (output) {
+      setResult(typeof output === 'string' ? output : JSON.stringify(output));
+    }
+  };
+
+  const handleApply = () => {
+    if (result) {
+      onApply(result, hasSelection);
+      onToast(hasSelection ? 'AI text replaced the selection' : 'AI text applied to editor', 'success');
+      setResult('');
+      onClose();
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex justify-end" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 w-full max-w-md h-full shadow-2xl flex flex-col border-l border-gray-200 dark:border-gray-700" onClick={e => e.stopPropagation()} style={{ animation: 'slideFromRight 0.3s ease-out' }}>
+        <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">AI Assistant</h2>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className={'p-3 rounded-xl text-sm border ' + (hasSelection ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300' : 'bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300')}>
+            {hasSelection ? (
+              <>
+                <div className="font-semibold mb-1">Selected text</div>
+                <div className="max-h-24 overflow-y-auto whitespace-pre-wrap text-xs">{selectedText}</div>
+              </>
+            ) : (
+              'No selection — the whole document will be processed.'
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">AI Mode</label>
+            <div className="grid grid-cols-2 gap-2">
+              {AI_MODES.map(mode => (
+                <button key={mode.id} onClick={() => { setSelectedMode(mode.id); setCustomPrompt(''); }}
+                  className={'p-3 rounded-xl text-left transition-all text-sm ' + (selectedMode === mode.id ? 'bg-indigo-100 dark:bg-indigo-900/30 border-2 border-indigo-500 dark:border-indigo-400' : 'border border-gray-200 dark:border-gray-600 hover:border-indigo-300 dark:hover:border-indigo-600')}>
+                  <div className="font-semibold text-gray-900 dark:text-white">{mode.name}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{mode.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Custom Prompt (optional)</label>
+            <textarea value={customPrompt} onChange={e => setCustomPrompt(e.target.value)}
+              placeholder="Override the default prompt..."
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 h-20"
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <button onClick={handleProcess} disabled={isProcessing}
+              className="flex-1 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold hover:from-indigo-600 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/25">
+              {isProcessing ? (
+                <><svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 11-6.219-8.56" /></svg> Processing...</>
+              ) : (
+                <><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg> {hasSelection ? 'Run AI on Selection' : 'Run AI'}</>
+              )}
+            </button>
+            {isProcessing && (
+              <button onClick={cancel} className="px-4 py-3 rounded-xl bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                Cancel
+              </button>
+            )}
+          </div>
+
+          {error && (
+            <div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">{error}</div>
+          )}
+
+          {result && (
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <label className="text-sm font-semibold text-gray-700 dark:text-gray-300">Result</label>
+                <button onClick={handleApply} className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-semibold hover:bg-emerald-600 transition-colors">{hasSelection ? 'Replace Selection' : 'Apply to Editor'}</button>
+              </div>
+              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap max-h-60 overflow-y-auto">{result}</div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function makeDocument() {
+  return {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+    title: 'Untitled',
+    content: '',
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+}
+
+function deriveTitle(text) {
+  if (!text) return 'Untitled';
+  const match = text.match(/^#\s+(.+)/m);
+  return match ? match[1].trim() : text.split('\n')[0].trim().slice(0, 60) || 'Untitled';
+}
+
+export default function App() {
+  const [documents, setDocuments] = useLocalStorage('ai-studio-docs', []);
+  const [currentId, setCurrentId] = useState(null);
+  const [content, setContent] = useState('');
+  const [savedContent, setSavedContent] = useState('');
+  const [saveState, setSaveState] = useState('saved');
+  const [selection, setSelection] = useState({ text: '', from: 0, to: 0 });
+  const [activeTab, setActiveTab] = useState('editor');
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showAI, setShowAI] = useState(false);
+  const [toast, setToast] = useState(null);
+  const initializedRef = useRef(false);
+
+  const [darkMode, setDarkMode] = useLocalStorage('ai-studio-dark', false);
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode);
+  }, [darkMode]);
+
+  const title = useMemo(() => deriveTitle(content), [content]);
+
+  const wordCount = useMemo(() => {
+    if (!content) return { words: 0, lines: 0, chars: 0 };
+    const text = content.replace(/[#*_`~\[\]()]/g, '').trim();
+    return {
+      words: text ? text.split(/\s+/).length : 0,
+      lines: content.split('\n').length,
+      chars: content.length,
+    };
+  }, [content]);
+
+  const showToast = useCallback((message, type = 'info') => {
+    setToast({ message, type, key: Date.now() });
+  }, []);
+
+  const persistDocument = useCallback((id, text) => {
+    if (!id) return;
+    const nextTitle = deriveTitle(text);
+    setDocuments(prev => prev.map(d => d.id === id
+      ? { ...d, content: text, title: nextTitle, updatedAt: Date.now() }
+      : d));
+    setSavedContent(text);
+    setSaveState('saved');
+  }, [setDocuments]);
+
+  useEffect(() => {
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      if (documents.length === 0) {
+        const doc = makeDocument();
+        setDocuments([doc]);
+        setCurrentId(doc.id);
+      } else {
+        const doc = documents[0];
+        setCurrentId(doc.id);
+        setContent(doc.content || '');
+        setSavedContent(doc.content || '');
+      }
+    }
+  }, [documents, setDocuments]);
+
+  const saveNow = useCallback((text = content) => {
+    if (!currentId) return false;
+    persistDocument(currentId, text);
+    return true;
+  }, [currentId, content, persistDocument]);
+
+  useEffect(() => {
+    if (!currentId) return;
+    if (content === savedContent) {
+      setSaveState('saved');
+      return;
+    }
+    setSaveState('dirty');
+    const timer = setTimeout(() => persistDocument(currentId, content), 700);
+    return () => clearTimeout(timer);
+  }, [content, savedContent, currentId, persistDocument]);
+
+  const selectDocument = useCallback((id) => {
+    if (id === currentId) return;
+    if (currentId && content !== savedContent) persistDocument(currentId, content);
+    const doc = documents.find(d => d.id === id);
+    if (doc) {
+      setCurrentId(id);
+      setContent(doc.content || '');
+      setSavedContent(doc.content || '');
+      setSaveState('saved');
+      setSelection({ text: '', from: 0, to: 0 });
+    }
+  }, [currentId, content, savedContent, documents, persistDocument]);
+
+  const newDocument = useCallback(() => {
+    if (currentId && content !== savedContent) persistDocument(currentId, content);
+    const doc = makeDocument();
+    setDocuments(prev => [doc, ...prev]);
+    setCurrentId(doc.id);
+    setContent('');
+    setSavedContent('');
+    setSaveState('saved');
+    setSelection({ text: '', from: 0, to: 0 });
+    showToast('New document created', 'success');
+  }, [currentId, content, savedContent, persistDocument, setDocuments, showToast]);
+
+  const deleteDocument = useCallback((id) => {
+    if (id !== currentId && currentId && content !== savedContent) {
+      persistDocument(currentId, content);
+    }
+    let next = documents.filter(d => d.id !== id);
+    if (next.length === 0) next = [makeDocument()];
+    setDocuments(next);
+    if (id === currentId) {
+      const doc = next[0];
+      setCurrentId(doc.id);
+      setContent(doc.content || '');
+      setSavedContent(doc.content || '');
+      setSaveState('saved');
+      setSelection({ text: '', from: 0, to: 0 });
+    }
+    showToast('Document deleted', 'info');
+  }, [documents, currentId, content, savedContent, persistDocument, setDocuments, showToast]);
+
+  const applyTemplate = useCallback((templateContent) => {
+    setContent(templateContent);
+    setSelection({ text: '', from: 0, to: 0 });
+    if (currentId) persistDocument(currentId, templateContent);
+    showToast('Template applied', 'success');
+  }, [currentId, persistDocument, showToast]);
+
+  const applyAIResult = useCallback((aiContent, useSelection) => {
+    const hasRange = useSelection && selection.to > selection.from && selection.to <= content.length;
+    const next = hasRange
+      ? content.slice(0, selection.from) + aiContent + content.slice(selection.to)
+      : aiContent;
+    setContent(next);
+    setSelection({ text: '', from: 0, to: 0 });
+    if (currentId) persistDocument(currentId, next);
+  }, [content, selection, currentId, persistDocument]);
+
+  const handleSelectionChange = useCallback((text, from, to) => {
+    setSelection({ text, from, to });
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        if (saveNow()) showToast('Document saved', 'success');
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+        e.preventDefault();
+        newDocument();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [saveNow, newDocument, showToast]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (content !== savedContent) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden' && currentId && content !== savedContent) {
+        persistDocument(currentId, content);
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [content, savedContent, currentId, persistDocument]);
+
+  return (
+    <div className="h-screen flex flex-col bg-white dark:bg-gray-900 transition-colors">
+      <style>{`
+        @keyframes slideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes slideFromLeft { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+        @keyframes slideFromRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+      `}</style>
+
+      {/* Top Bar */}
+      <header className="h-14 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md z-30 flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setShowSidebar(true)} aria-label="Open documents" className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="18" x2="21" y2="18" /></svg>
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+              </svg>
+            </div>
+            <h1 className="text-sm font-bold text-gray-900 dark:text-white hidden sm:block">AI Writing Studio</h1>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-gray-400 dark:text-gray-500 mr-2 hidden sm:block">{title}</span>
+          <button onClick={() => setShowTemplates(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors" title="Templates">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>
+          </button>
+          <button onClick={() => setShowAI(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors" title="AI Assistant">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>
+          </button>
+          <button onClick={() => setShowExport(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors" title="Export">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+          </button>
+          <button onClick={() => setShowSettings(true)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors" title="Settings">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
+          </button>
+        </div>
+      </header>
+
+      {/* Content Area */}
+      <div className="flex-1 overflow-hidden">
+        {activeTab === 'editor' ? (
+          <Editor value={content} onChange={setContent} onSelectionChange={handleSelectionChange} darkMode={darkMode} />
+        ) : (
+          <Preview content={content} />
+        )}
+      </div>
+
+      {/* Word Count Bar */}
+      <div className="h-7 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 bg-gray-50 dark:bg-gray-800/50 flex-shrink-0">
+        <div className="flex items-center gap-4 text-[11px] text-gray-400 dark:text-gray-500">
+          <span>{wordCount.words} words</span>
+          <span>{wordCount.lines} lines</span>
+          <span>{wordCount.chars} chars</span>
+        </div>
+        <div className="flex items-center gap-3 text-[11px] text-gray-400 dark:text-gray-500">
+          <span data-testid="save-status" className={saveState === 'dirty' ? 'text-amber-500 font-medium' : ''}>
+            {saveState === 'dirty' ? 'Unsaved' : 'Saved'}
+          </span>
+          <span>{title}</span>
+        </div>
+      </div>
+
+      {/* Bottom Navigation */}
+      <nav className="h-14 border-t border-gray-200 dark:border-gray-700 flex items-center bg-white dark:bg-gray-900 flex-shrink-0 z-30">
+        <div className="flex w-full">
+          {[
+            { id: 'editor', label: 'Editor', icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>) },
+            { id: 'preview', label: 'Preview', icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>) },
+            { id: 'ai', label: 'AI', icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>) },
+            { id: 'export', label: 'Export', icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>) },
+            { id: 'settings', label: 'Settings', icon: (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>) },
+          ].map(tab => (
+            <button key={tab.id} onClick={() => {
+              if (tab.id === 'ai') setShowAI(true);
+              else if (tab.id === 'export') setShowExport(true);
+              else if (tab.id === 'settings') setShowSettings(true);
+              else setActiveTab(tab.id);
+            }}
+              className={'flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors ' + (activeTab === tab.id ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300')}>
+              {tab.icon}
+              <span className="text-[10px] font-medium">{tab.label}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {/* Modals & Panels */}
+      {showSidebar && <Sidebar documents={documents} currentId={currentId} onSelect={selectDocument} onNew={newDocument} onDelete={deleteDocument} onClose={() => setShowSidebar(false)} />}
+      {showTemplates && <TemplateModal onSelect={applyTemplate} onClose={() => setShowTemplates(false)} />}
+      {showExport && <ExportModal content={content} title={title} onClose={() => setShowExport(false)} onToast={showToast} />}
+      {showSettings && <SettingsPanel darkMode={darkMode} setDarkMode={setDarkMode} onClose={() => setShowSettings(false)} />}
+      {showAI && <AIPanel content={content} selectedText={selection.text} onApply={applyAIResult} onClose={() => setShowAI(false)} onToast={showToast} />}
+
+      {/* Toast */}
+      {toast && <Toast key={toast.key} message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+    </div>
+  );
+}
